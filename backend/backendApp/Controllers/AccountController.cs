@@ -142,6 +142,17 @@ namespace backendApp.Controllers
                 return Unauthorized(new { message = "User is authenticated" });
             }
 
+            var existingUser = await _userRepo.GetByEmailAsync(userDto.Email);
+            if (existingUser != null)
+            {
+                return BadRequest(new { message = "Email is already in use." });
+            }
+
+            if (!_userService.IsValidEmail(userDto.Email))
+            {
+                return BadRequest(new { message = "Invalid email address." });
+            }
+
             var user = await _userRepo.UpdateAsync(id, userDto);
             if (user == null)
             {
