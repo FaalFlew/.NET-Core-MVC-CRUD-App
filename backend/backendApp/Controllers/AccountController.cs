@@ -10,6 +10,7 @@ using System.Security.Claims;
 using System.Threading.Tasks;
 using backendApp.Interfaces;
 using backendApp.Mappers;
+using backendApp.Services;
 
 namespace backendApp.Controllers
 {
@@ -19,12 +20,14 @@ namespace backendApp.Controllers
     {
         private readonly ApplicationDbContext _context;
         private readonly IUserRepository _userRepo;
+        private readonly UserService _userService;
 
 
-        public AccountController(ApplicationDbContext context, IUserRepository userRepo)
+        public AccountController(ApplicationDbContext context, IUserRepository userRepo, UserService userService)
         {
             _context = context;
             _userRepo = userRepo;
+            _userService = userService;
         }
 
         // login
@@ -44,7 +47,7 @@ namespace backendApp.Controllers
 
                 var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
                 var principal = new ClaimsPrincipal(identity);
-                
+
                 await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
 
                 return Ok(new { message = "Login success" });
@@ -77,10 +80,10 @@ namespace backendApp.Controllers
         [HttpGet("users")]
         public async Task<IActionResult> GetAllUsers()
         {
-            
+
             if (!User.Identity.IsAuthenticated)
             {
-               return Unauthorized(new { message = "User  not authenticated" });
+                return Unauthorized(new { message = "User  not authenticated" });
             }
 
             var users = await _userRepo.GetAllAsync();
@@ -97,23 +100,33 @@ namespace backendApp.Controllers
                 return Unauthorized(new { message = "User not authenticated" });
             }
 
-            // validate
             if (string.IsNullOrEmpty(userDto.Username) || string.IsNullOrEmpty(userDto.Password) || string.IsNullOrEmpty(userDto.Email))
             {
                 return BadRequest(new { message = " All Username, password,  email required." });
             }
 
+            var existingUser = await _userRepo.GetByEmailAsync(userDto.Email);
+            if (existingUser != null)
+            {
+                return BadRequest(new { message = "Email is already in use." });
+            }
+
+            if (!_userService.IsValidEmail(userDto.Email))
+            {
+                return BadRequest(new { message = "Invalid email address." });
+            }
+
             var userModel = userDto.ToUserFromCreateDto();
             await _userRepo.CreateAsync(userModel);
-            return CreatedAtAction(nameof(GetById), new {id = userModel.Id}, userModel);
+            return CreatedAtAction(nameof(GetById), new { id = userModel.Id }, userModel);
         }
-        
-            [HttpGet("users/{id}")]
-         public async Task<IActionResult> GetById([FromRoute] int id) 
+
+        [HttpGet("users/{id}")]
+        public async Task<IActionResult> GetById([FromRoute] int id)
         {
             var user = await _userRepo.GetByIdAsync(id);
 
-            if(user == null)
+            if (user == null)
             {
                 return NotFound();
             }
@@ -121,7 +134,7 @@ namespace backendApp.Controllers
         }
 
         // Edit user
-            [HttpPut("users/{id}")]
+        [HttpPut("users/{id}")]
         public async Task<IActionResult> UpdateUser(int id, [FromBody] UpdateUserRequestDto userDto)
         {
             if (!User.Identity.IsAuthenticated)

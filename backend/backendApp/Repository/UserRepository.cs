@@ -12,7 +12,7 @@ namespace backendApp.Repository
 {
     public class UserRepository : IUserRepository
     {
-         private readonly ApplicationDbContext _context;
+        private readonly ApplicationDbContext _context;
         public UserRepository(ApplicationDbContext context)
         {
             _context = context;
@@ -23,6 +23,11 @@ namespace backendApp.Repository
             await _context.Users.AddAsync(userModel);
             await _context.SaveChangesAsync();
             return userModel;
+        }
+
+        public async Task<User> GetByEmailAsync(string email)
+        {
+            return await _context.Users.FirstOrDefaultAsync(u => u.Email == email);
         }
 
         public async Task<User?> GetByIdAsync(int id)
@@ -41,8 +46,8 @@ namespace backendApp.Repository
             _context.Users.Remove(user);
             await _context.SaveChangesAsync();
 
-            return user; 
-       }
+            return user;
+        }
 
         public async Task<List<User>> GetAllAsync()
         {
