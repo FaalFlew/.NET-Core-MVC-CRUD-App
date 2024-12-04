@@ -18,45 +18,30 @@ namespace backendApp.Controllers
     [ApiController]
     public class AccountController : ControllerBase
     {
-        private readonly ApplicationDbContext _context;
-        private readonly IUserRepository _userRepo;
         private readonly UserService _userService;
 
-
-        public AccountController(ApplicationDbContext context, IUserRepository userRepo, UserService userService)
+        public AccountController(UserService userService)
         {
-            _context = context;
-            _userRepo = userRepo;
             _userService = userService;
         }
 
-        // login
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
         {
-            var user = _context.Users.FirstOrDefault(u => u.Username == loginDto.Username && u.Password == loginDto.Password);
-
+            var user = await _userService.AuthenticateUser(loginDto.Username, loginDto.Password);
             if (user != null)
             {
-                var claims = new List<Claim>
-                {
-                    new Claim(ClaimTypes.Name, user.Username),
-                    new Claim(ClaimTypes.Email, user.Email),
-                    new Claim(ClaimTypes.DateOfBirth, user.DateJoined.ToString())
-                };
-
+                var claims = _userService.GetUserClaims(user);
                 var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
                 var principal = new ClaimsPrincipal(identity);
 
                 await HttpContext.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, principal);
-
                 return Ok(new { message = "Login success" });
             }
 
-            return Unauthorized(new { message = "Inncorrect username or password" });
+            return Unauthorized(new { message = "Incorrect username or password" });
         }
 
-        // Logout
         [HttpPost("logout")]
         public async Task<IActionResult> Logout()
         {
@@ -64,7 +49,6 @@ namespace backendApp.Controllers
             return Ok(new { message = "Logout success" });
         }
 
-        // Validate session
         [HttpGet("validate-session")]
         public IActionResult ValidateSession()
         {
@@ -76,22 +60,18 @@ namespace backendApp.Controllers
             return Unauthorized(new { message = "Session is not valid" });
         }
 
-        // Get all users
         [HttpGet("users")]
         public async Task<IActionResult> GetAllUsers()
         {
-
             if (!User.Identity.IsAuthenticated)
             {
-                return Unauthorized(new { message = "User  not authenticated" });
+                return Unauthorized(new { message = "User not authenticated" });
             }
 
-            var users = await _userRepo.GetAllAsync();
-
+            var users = await _userService.GetAllUsersAsync();
             return Ok(users);
         }
 
-        // Add user
         [HttpPost("users")]
         public async Task<IActionResult> CreateUser([FromBody] CreateUserRequestDto userDto)
         {
@@ -102,30 +82,27 @@ namespace backendApp.Controllers
 
             if (string.IsNullOrEmpty(userDto.Username) || string.IsNullOrEmpty(userDto.Password) || string.IsNullOrEmpty(userDto.Email))
             {
-                return BadRequest(new { message = " All Username, password,  email required." });
+                return BadRequest(new { message = "All fields (username, password, email) are required" });
             }
 
-            var existingUser = await _userRepo.GetByEmailAsync(userDto.Email);
-            if (existingUser != null)
+            if (await _userService.IsEmailInUseAsync(userDto.Email))
             {
-                return BadRequest(new { message = "Email is already in use." });
+                return BadRequest(new { message = "Email is already in use" });
             }
 
             if (!_userService.IsValidEmail(userDto.Email))
             {
-                return BadRequest(new { message = "Invalid email address." });
+                return BadRequest(new { message = "Invalid email address" });
             }
 
-            var userModel = userDto.ToUserFromCreateDto();
-            await _userRepo.CreateAsync(userModel);
-            return CreatedAtAction(nameof(GetById), new { id = userModel.Id }, userModel);
+            var user = await _userService.CreateUserAsync(userDto);
+            return CreatedAtAction(nameof(GetById), new { id = user.Id }, user);
         }
 
         [HttpGet("users/{id}")]
         public async Task<IActionResult> GetById([FromRoute] int id)
         {
-            var user = await _userRepo.GetByIdAsync(id);
-
+            var user = await _userService.GetUserByIdAsync(id);
             if (user == null)
             {
                 return NotFound();
@@ -133,37 +110,33 @@ namespace backendApp.Controllers
             return Ok(user);
         }
 
-        // Edit user
         [HttpPut("users/{id}")]
         public async Task<IActionResult> UpdateUser(int id, [FromBody] UpdateUserRequestDto userDto)
         {
             if (!User.Identity.IsAuthenticated)
             {
-                return Unauthorized(new { message = "User is authenticated" });
+                return Unauthorized(new { message = "User not authenticated" });
             }
 
-            var existingUser = await _userRepo.GetByEmailAsync(userDto.Email);
-            if (existingUser != null)
+            if (await _userService.IsEmailInUseAsync(userDto.Email))
             {
-                return BadRequest(new { message = "Email is already in use." });
+                return BadRequest(new { message = "Email is already in use" });
             }
 
             if (!_userService.IsValidEmail(userDto.Email))
             {
-                return BadRequest(new { message = "Invalid email address." });
+                return BadRequest(new { message = "Invalid email address" });
             }
 
-            var user = await _userRepo.UpdateAsync(id, userDto);
+            var user = await _userService.UpdateUserAsync(id, userDto);
             if (user == null)
             {
-                return NotFound(new { message = "User can not found" });
+                return NotFound(new { message = "User not found" });
             }
 
-
-            return Ok(new { message = "User updated success" });
+            return Ok(new { message = "User updated successfully" });
         }
 
-        // Delete  user
         [HttpDelete("users/{id}")]
         public async Task<IActionResult> DeleteUser(int id)
         {
@@ -172,13 +145,13 @@ namespace backendApp.Controllers
                 return Unauthorized(new { message = "User not authenticated" });
             }
 
-            var user = await _userRepo.DeleteAsync(id);
+            var user = await _userService.DeleteUserAsync(id);
             if (user == null)
             {
-                return NotFound(new { message = "User is not found" });
+                return NotFound(new { message = "User not found" });
             }
 
-            return Ok(new { message = "User deleted success" });
+            return Ok(new { message = "User deleted successfully" });
         }
     }
 }
